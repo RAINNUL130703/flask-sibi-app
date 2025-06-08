@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SIBI Vision - Real-time Classification</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      text-align: center;
+    }
+    #video-container {
+      position: relative;
+      margin: 20px 0;
+    }
+    #video {
+      width: 100%;
+      max-width: 640px;
+      border: 3px solid #2c3e50;
+      border-radius: 8px;
+    }
+    #capture {
+      background-color: #3498db;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      margin: 10px 0;
+    }
+    #capture:hover {
+      background-color: #2980b9;
+    }
+    #result {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 4px;
+      background-color: #f8f9fa;
+      min-height: 60px;
+    }
+    .confidence-bar {
+      height: 20px;
+      background-color: #ecf0f1;
+      border-radius: 10px;
+      margin-top: 10px;
+      overflow: hidden;
+    }
+    .confidence-fill {
+      height: 100%;
+      background-color: #2ecc71;
+      width: 0%;
+      transition: width 0.5s;
+    }
+    .error {
+      color: #e74c3c;
+    }
+    #annotated-result {
+      margin-top: 20px;
+      max-width: 100%;
+      border: 2px solid #2c3e50;
+      border-radius: 8px;
+    }
+    .instruction-box {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+  <div class="instruction-box">
+      💡 Tips: <br>
+      - Gunakan latar polos <br>
+      - Tunjukkan telapak tangan <br>
+      - Hindari cahaya silau
+  </div>
+
+  <h1>SIBI Sign Language Recognition</h1>
+  <p>Position your hand in front of the camera and click capture</p>
+
+  <div id="video-container">
+    <video id="video" width="640" height="480" autoplay playsinline></video>
+  </div>
+
+  <button id="capture">Capture & Analyze</button>
+
+  <div id="result">
+    <div id="prediction-text">Waiting for analysis...</div>
+    <div class="confidence-bar">
+      <div id="confidence-fill" class="confidence-fill"></div>
+    </div>
+    <div id="confidence-text" style="margin-top: 5px;"></div>
+    <img id="annotated-result" style="display: none;">
+  </div>
+
+  <script>
+    // DOM Elements
+    const video = document.getElementById('video');
+    const captureBtn = document.getElementById('capture');
+    const predictionText = document.getElementById('prediction-text');
+    const confidenceFill = document.getElementById('confidence-fill');
+    const confidenceText = document.getElementById('confidence-text');
+    const annotatedResult = document.getElementById('annotated-result');
+
+    // Camera Setup
+    async function initCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            width: { ideal: 1280 }, 
+            height: { ideal: 720 },
+            facingMode: "user"  // Gunakan kamera depan
+          } 
+        });
+        video.srcObject = stream;
+      } catch (err) {
+        showError(`Camera Error: ${err.message}`);
+        console.error("Camera Error:", err);
+      }
+    }
+
+    // Capture and Process Image
+    captureBtn.addEventListener('click', async () => {
+      try {
+        // Show loading state
+        predictionText.textContent = "Processing...";
+        confidenceFill.style.width = "0%";
+        confidenceText.textContent = "";
+        annotatedResult.style.display = "none";
+
+        // Create canvas and capture frame
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Send to backend
+        const response = await fetch('/process_image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            image: canvas.toDataURL('image/jpeg', 0.8) 
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+
+        const data = await response.json();
+
+        // Display results
+        if (data.error) {
+          showError(data.error);
+        } else {
+          const letter = data.predicted_letter || "Unknown";
+          const confidence = (data.confidence * 100).toFixed(1);
+          
+          predictionText.innerHTML = `Predicted Letter: <strong>${letter}</strong>`;
+          confidenceFill.style.width = `${confidence}%`;
+          confidenceText.textContent = `Confidence: ${confidence}%`;
+          
+          // Display annotated image if available
+          if (data.annotated_image) {
+            annotatedResult.src = `data:image/jpeg;base64,${data.annotated_image}`;
+            annotatedResult.style.display = "block";
+          }
+        }
+      } catch (error) {
+        showError(`Analysis failed: ${error.message}`);
+        console.error("Processing Error:", error);
+      }
+    });
+
+    // Helper Functions
+    function getLetterFromClass(predicted_class) {
+      const classes = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      return classes[predicted_class] || 'Unknown';
+    }
+
+    function showError(message) {
+      predictionText.innerHTML = `<span class="error">${message}</span>`;
+      confidenceFill.style.width = "0%";
+      confidenceText.textContent = "";
+      annotatedResult.style.display = "none";
+    }
+
+    // Initialize
+    initCamera();
+  </script>
+</body>
+</html>
