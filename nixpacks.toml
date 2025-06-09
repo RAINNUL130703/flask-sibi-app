@@ -1,8 +1,8 @@
 [phases.setup]
-nixPkgs = ['libGL']
+nixPkgs = ['python3', 'libGL']  # tambahkan python3
 
 [phases.install]
-cmds = ['pip install -r requirements.txt']
+cmds = ['python3 -m pip install --upgrade pip', 'pip install -r requirements.txt']
 
 [phases.start]
 cmd = 'gunicorn app:app'
