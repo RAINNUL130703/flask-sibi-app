@@ -2,6 +2,6 @@ Flask
 gunicorn
 tensorflow
 numpy
+opencv-python
 pillow
-opencv-python-headless
 mediapipe
